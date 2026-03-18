@@ -10,20 +10,17 @@ import send_email
 from discord.ext import tasks
 import asyncio
 
-
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix = "!", intents = intents)
 
-bot.emailFlag = False
-bot.user_email = None
+channelEmails = {}
 guild = discord.Object(id = 1463260302325055530)
 
 @tasks.loop(seconds=10)
 async def check_email():
-        if bot.user_email == None:
-            return
-        message = await receive_email.check_email(bot.user_email)
+    for value in channelEmails.values():
+        message = await receive_email.check_email(value)
         if message is not None:
             mail_from = message['from']
             mail_subject = message['subject']
@@ -34,7 +31,7 @@ async def check_email():
                     channel_id = receive_email.getChannelId(mail_content)
             mail_content = await receive_email.extract_original(mail_content)
             channel = bot.get_channel(channel_id)
-            await channel.send(f'{bot.user_email}:\n{mail_content}')
+            await channel.send(f'{channelEmails[channel_id]}:\n{mail_content}')
 
 
 @bot.event
@@ -53,8 +50,8 @@ async def on_message(message):
    if author == bot.user:
        return
    print(f'{author.display_name} ({author.name}): {message.content}')
-   if bot.emailFlag:
-       await send_email.send(message.content, author.name, bot.user_email, channel)
+   if channelEmails.get(channel) is not None:
+       await send_email.send(message.content, author.name, channelEmails[channel], channel)
 
 @bot.tree.command(name="email", description="Turn email messages on. Usage: /email example@gmail.com", guild=guild)
 async def email(interaction : discord.Interaction, message : str):
@@ -62,12 +59,11 @@ async def email(interaction : discord.Interaction, message : str):
         await interaction.response.send_message(content = "Not a valid gmail address.")
         return
     await interaction.response.send_message(content = f"Messages will be emailed to {message}!")
-    bot.emailFlag = True
-    bot.user_email = message
+    channelEmails.update({interaction.channel_id: message})
 
 @bot.tree.command(name="emailoff", description="Turn email messages off", guild=guild)
 async def emailoff(interaction : discord.Interaction):
-    bot.emailFlag = False
+    channelEmails.pop(interaction.channel_id, None)
     await interaction.response.send_message(content = "Email messages turned off.")
 
 bot.run(os.getenv('TOKEN'))
